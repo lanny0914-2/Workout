@@ -3,6 +3,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const distDir = path.join(root, "dist");
+const persistenceScriptSrc = "persistence.js?v=exercise-history-20260607";
 const staticAssets = [
   "app.js",
   "chart.js",
@@ -22,14 +23,16 @@ await Promise.all(
 
 const indexPath = path.join(distDir, "index.html");
 const html = await readFile(indexPath, "utf8");
-if (!html.includes('src="persistence.js"')) {
-  await writeFile(
-    indexPath,
-    html.replace(
+const persistenceScriptPattern = /src=["']persistence\.js(?:[?#][^"']*)?["']/;
+const versionedHtml = persistenceScriptPattern.test(html)
+  ? html.replace(persistenceScriptPattern, `src="${persistenceScriptSrc}"`)
+  : html.replace(
       '<script src="app.js"></script>',
-      '<script src="app.js"></script>\n        <script src="persistence.js"></script>',
-    ),
-  );
+      `<script src="app.js"></script>\n        <script src="${persistenceScriptSrc}"></script>`,
+    );
+
+if (versionedHtml !== html) {
+  await writeFile(indexPath, versionedHtml);
 }
 
 console.log(`Copied ${staticAssets.length} static JS assets to dist.`);
