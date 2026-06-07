@@ -233,6 +233,7 @@ class WorkoutPersistence {
 
     const normalizedCategory = this.getExerciseCategory(categoryValue)
       || EXERCISE_CATALOG.find((category) => category.label === categoryValue)
+      || EXERCISE_CATALOG.find((category) => exerciseName && category.exercises.includes(exerciseName))
       || EXERCISE_CATALOG[0];
 
     categorySelect.value = normalizedCategory.id;
@@ -251,7 +252,7 @@ class WorkoutPersistence {
     this.applyExerciseSelection(storedCategory, storedExercise);
   }
 
-  saveExercisePreference() {
+  async saveExercisePreference() {
     const selected = this.getSelectedExercise();
     try {
       localStorage.setItem(EXERCISE_CATEGORY_KEY, selected.categoryId);
@@ -261,8 +262,8 @@ class WorkoutPersistence {
     }
 
     if (this.isApplyingSettings) return;
-    this.saveSetting(SETTING_EXERCISE_CATEGORY, selected.categoryId, "string");
-    this.saveSetting(SETTING_EXERCISE_NAME, selected.name, "string");
+    await this.saveSetting(SETTING_EXERCISE_CATEGORY, selected.categoryId, "string");
+    await this.saveSetting(SETTING_EXERCISE_NAME, selected.name, "string");
   }
 
   injectProfileSection() {
