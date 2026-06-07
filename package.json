@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "postbuild": "node scripts/copy-static-assets.mjs",
+    "validate:dist": "node scripts/validate-dist.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {
