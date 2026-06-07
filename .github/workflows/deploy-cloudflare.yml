@@ -56,7 +56,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_DATABASE_NAME: workout-profiles
           D1_BINDING_NAME: DB
-          PAGES_PROJECT_NAME: workout
 
       - name: Stop after D1 setup
         if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only == 'true'
