@@ -172,6 +172,15 @@ class WorkoutProgramManager {
     if (selectedExercise && category.exercises.includes(selectedExercise)) exerciseSelect.value = selectedExercise;
   }
 
+  renderInlineCategoryOptions(selectedCategoryId) {
+    return EXERCISE_CATALOG.map((category) => `<option value="${this.escapeHtml(category.id)}"${category.id === selectedCategoryId ? " selected" : ""}>${this.escapeHtml(category.label)}</option>`).join("");
+  }
+
+  renderInlineExerciseOptions(categoryId, selectedExercise) {
+    const category = this.getExerciseCategory(categoryId) || EXERCISE_CATALOG[0];
+    return category.exercises.map((exercise) => `<option value="${this.escapeHtml(exercise)}"${exercise === selectedExercise ? " selected" : ""}>${this.escapeHtml(exercise)}</option>`).join("");
+  }
+
   getExerciseCategory(categoryId) {
     return EXERCISE_CATALOG.find((category) => category.id === categoryId) || null;
   }
@@ -291,6 +300,7 @@ class WorkoutProgramManager {
     program.sets.splice(index, 1);
     this.activeSetIndex = Math.min(this.activeSetIndex, Math.max(0, program.sets.length - 1));
     this.render();
+    this.savePrograms();
   }
 
   moveSet(index, direction) {
@@ -302,6 +312,70 @@ class WorkoutProgramManager {
     program.sets.splice(nextIndex, 0, set);
     this.activeSetIndex = nextIndex;
     this.render();
+    this.savePrograms();
+  }
+
+  updateSetCategory(index, categoryId) {
+    const program = this.getSelectedProgram();
+    const set = program?.sets?.[index];
+    const category = this.getExerciseCategory(categoryId);
+    if (!set || !category) return;
+    set.categoryId = category.id;
+    set.category = category.label;
+    if (!category.exercises.includes(set.name)) set.name = category.exercises[0] || "Other";
+    this.activeSetIndex = index;
+    this.render();
+    this.applyProgramSet(index);
+    this.savePrograms();
+  }
+
+  updateSetExercise(index, exerciseName) {
+    const program = this.getSelectedProgram();
+    const set = program?.sets?.[index];
+    if (!set) return;
+    const category = this.getExerciseCategory(set.categoryId) || EXERCISE_CATALOG[0];
+    set.name = category.exercises.includes(exerciseName) ? exerciseName : category.exercises[0];
+    this.activeSetIndex = index;
+    this.render();
+    this.applyProgramSet(index);
+    this.savePrograms();
+  }
+
+  updateSetWeight(index, displayWeightValue) {
+    const program = this.getSelectedProgram();
+    const set = program?.sets?.[index];
+    if (!set) return;
+    const displayWeight = parseFloat(displayWeightValue);
+    const weightKg = this.app.convertDisplayToKg(displayWeight);
+    if (Number.isNaN(weightKg) || weightKg < 0 || weightKg > 100) {
+      this.setStatus(`Enter a valid weight (${this.app.getWeightRangeText()}).`, "error");
+      this.render();
+      return;
+    }
+    set.weightKg = weightKg;
+    this.activeSetIndex = index;
+    this.render();
+    this.applyProgramSet(index);
+    this.savePrograms();
+    this.setStatus("Set updated.", "success");
+  }
+
+  updateSetReps(index, repsValue) {
+    const program = this.getSelectedProgram();
+    const set = program?.sets?.[index];
+    if (!set) return;
+    const reps = parseInt(repsValue, 10);
+    if (!Number.isInteger(reps) || reps < 1 || reps > 100) {
+      this.setStatus("Enter 1-100 reps.", "error");
+      this.render();
+      return;
+    }
+    set.reps = reps;
+    this.activeSetIndex = index;
+    this.render();
+    this.applyProgramSet(index);
+    this.savePrograms();
+    this.setStatus("Set updated.", "success");
   }
 
   applyProgramSet(index = this.activeSetIndex) {
@@ -389,8 +463,25 @@ class WorkoutProgramManager {
 
     list.innerHTML = program.sets.map((set, index) => `
       <div style="border: 1px solid ${index === this.activeSetIndex ? "#667eea" : "#e0e0e0"}; border-radius: 6px; padding: 10px; background: ${index === this.activeSetIndex ? "#f1f3ff" : "#f8f9fa"};">
-        <div style="font-weight: 600; color: #212529; margin-bottom: 4px;">${index + 1}. ${this.escapeHtml(set.name)}</div>
-        <div style="color: #6c757d; font-size: 0.85em; margin-bottom: 8px;">${this.escapeHtml(set.category)} &bull; ${this.escapeHtml(this.app.formatWeightWithUnit(set.weightKg))} &bull; ${Number(set.reps) || 0} reps</div>
+        <div style="font-weight: 600; color: #212529; margin-bottom: 8px;">Set ${index + 1}</div>
+        <div class="form-group" style="margin-bottom: 8px;">
+          <label for="programInlineCategory${index}">Category:</label>
+          <select id="programInlineCategory${index}" onchange="workoutProgramManager.updateSetCategory(${index}, this.value)">${this.renderInlineCategoryOptions(set.categoryId)}</select>
+        </div>
+        <div class="form-group" style="margin-bottom: 8px;">
+          <label for="programInlineExercise${index}">Exercise:</label>
+          <select id="programInlineExercise${index}" onchange="workoutProgramManager.updateSetExercise(${index}, this.value)">${this.renderInlineExerciseOptions(set.categoryId, set.name)}</select>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div>
+            <label for="programInlineWeight${index}">Weight</label>
+            <input type="number" id="programInlineWeight${index}" value="${this.escapeHtml(this.app.formatWeightValue(set.weightKg, this.app.getWeightInputDecimals()))}" min="0" step="${this.app.weightUnit === "lb" ? "1" : "0.5"}" onchange="workoutProgramManager.updateSetWeight(${index}, this.value)" />
+          </div>
+          <div>
+            <label for="programInlineReps${index}">Reps</label>
+            <input type="number" id="programInlineReps${index}" value="${Number(set.reps) || 1}" min="1" max="100" step="1" onchange="workoutProgramManager.updateSetReps(${index}, this.value)" />
+          </div>
+        </div>
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
           <button type="button" onclick="workoutProgramManager.applyProgramSet(${index})" style="padding: 6px; margin: 0;">Load</button>
           <button type="button" class="secondary" onclick="workoutProgramManager.moveSet(${index}, -1)" style="padding: 6px; margin: 0;">Up</button>
@@ -425,13 +516,8 @@ class WorkoutProgramManager {
 
   loadProgramsFromSettings() {
     const settingValue = this.persistence?.settings?.get(PROGRAMS_SETTING_KEY)?.value;
-    if (!settingValue) {
-      this.loadProgramsFromLocalStorage();
-      this.render();
-      return;
-    }
-
     const programs = this.parsePrograms(settingValue);
+
     if (programs) {
       this.programs = programs;
       if (!this.programs.some((program) => program.id === this.selectedProgramId)) {
@@ -442,16 +528,25 @@ class WorkoutProgramManager {
       const program = this.getSelectedProgram();
       this.setInputValue("programNameInput", program?.name || "");
       this.render();
+      return;
     }
+
+    this.loadProgramsFromLocalStorage({ clearIfMissing: true });
+    this.render();
   }
 
-  loadProgramsFromLocalStorage() {
+  loadProgramsFromLocalStorage(options = {}) {
     try {
-      const programs = this.parsePrograms(localStorage.getItem(PROGRAMS_STORAGE_KEY));
+      const programs = this.parsePrograms(localStorage.getItem(this.getProgramsStorageKey()));
       if (programs) {
         this.programs = programs;
         this.selectedProgramId = this.programs[0]?.id || "";
         this.setInputValue("programNameInput", this.programs[0]?.name || "");
+      } else if (options.clearIfMissing) {
+        this.programs = [];
+        this.selectedProgramId = "";
+        this.activeSetIndex = 0;
+        this.setInputValue("programNameInput", "");
       }
     } catch {
       // Ignore localStorage errors.
@@ -473,10 +568,15 @@ class WorkoutProgramManager {
 
   saveProgramsToLocalStorage() {
     try {
-      localStorage.setItem(PROGRAMS_STORAGE_KEY, JSON.stringify(this.programs));
+      localStorage.setItem(this.getProgramsStorageKey(), JSON.stringify(this.programs));
     } catch {
       // Ignore localStorage errors.
     }
+  }
+
+  getProgramsStorageKey() {
+    const profileId = this.persistence?.selectedProfileId;
+    return profileId ? `${PROGRAMS_STORAGE_KEY}.${profileId}` : `${PROGRAMS_STORAGE_KEY}.local`;
   }
 
   parsePrograms(value) {
