@@ -12,7 +12,6 @@ API_BASE = "https://api.cloudflare.com/client/v4"
 DB_NAME = os.environ.get("D1_DATABASE_NAME", "workout-profiles")
 BINDING_NAME = os.environ.get("D1_BINDING_NAME", "DB")
 MIGRATION_PATH = Path(os.environ.get("D1_MIGRATION_PATH", "migrations/0001_profiles_workouts.sql"))
-PROJECT_NAME_FILE = Path(os.environ.get("PAGES_PROJECT_NAME_FILE", ".cloudflare-pages-project-name"))
 MAX_API_RETRIES = 4
 
 
@@ -29,18 +28,6 @@ def require_env(name):
         print(f"Missing required environment variable: {name}", file=sys.stderr)
         sys.exit(1)
     return value
-
-
-def resolve_project_name():
-    explicit = os.environ.get("PAGES_PROJECT_NAME")
-    if explicit:
-        return explicit
-    if PROJECT_NAME_FILE.exists():
-        value = PROJECT_NAME_FILE.read_text(encoding="utf-8").strip()
-        if value:
-            return value
-    print("Missing resolved Cloudflare Pages project name", file=sys.stderr)
-    sys.exit(1)
 
 
 def collect_error_messages(payload):
@@ -89,9 +76,21 @@ def cloudflare_request(method, path, token, body=None):
     raise RuntimeError("Cloudflare API request failed after retries")
 
 
+def result_list(payload):
+    result = payload.get("result", [])
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        for key in ("items", "data", "projects", "domains"):
+            value = result.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
 def list_databases(account_id, token):
     result = cloudflare_request("GET", f"/accounts/{account_id}/d1/database", token)
-    return result.get("result", [])
+    return result_list(result)
 
 
 def database_name(database):
@@ -183,6 +182,57 @@ def get_project(account_id, token, project_name):
     return cloudflare_request("GET", f"/accounts/{account_id}/pages/projects/{project}", token).get("result", {})
 
 
+def list_pages_projects(account_id, token):
+    projects = []
+    page = 1
+    while True:
+        query = urllib.parse.urlencode({"page": page, "per_page": 50})
+        payload = cloudflare_request("GET", f"/accounts/{account_id}/pages/projects?{query}", token)
+        batch = result_list(payload)
+        projects.extend(batch)
+        info = payload.get("result_info") or {}
+        total_pages = int(info.get("total_pages") or page)
+        if page >= total_pages or not batch:
+            return projects
+        page += 1
+
+
+def project_domains(account_id, token, project_name):
+    encoded = urllib.parse.quote(project_name, safe="")
+    payload = cloudflare_request("GET", f"/accounts/{account_id}/pages/projects/{encoded}/domains", token)
+    return result_list(payload)
+
+
+def domain_name(domain):
+    if isinstance(domain, str):
+        return domain.lower()
+    return str(domain.get("name") or domain.get("domain") or "").lower()
+
+
+def find_project_by_custom_domain(account_id, token, custom_domain):
+    target = custom_domain.lower()
+    matches = []
+    for project in list_pages_projects(account_id, token):
+        project_name = project.get("name")
+        if not project_name:
+            continue
+        try:
+            domains = project_domains(account_id, token, project_name)
+        except CloudflareApiError as error:
+            if error.status == 404:
+                continue
+            raise
+        if any(domain_name(domain) == target for domain in domains):
+            matches.append(project_name)
+
+    if len(matches) == 1:
+        print(f"Found Pages project for {custom_domain}: {matches[0]}")
+        return matches[0]
+    if not matches:
+        raise RuntimeError(f"No Cloudflare Pages project found for custom domain: {custom_domain}")
+    raise RuntimeError(f"Multiple Cloudflare Pages projects found for custom domain {custom_domain}: {', '.join(sorted(matches))}")
+
+
 def bind_pages_project(account_id, token, db_id, project_name):
     project = get_project(account_id, token, project_name)
     deployment_configs = project.get("deployment_configs") or {}
@@ -216,10 +266,11 @@ def verify_binding(account_id, token, db_id, project_name):
 def main():
     account_id = require_env("CLOUDFLARE_ACCOUNT_ID")
     token = require_env("CLOUDFLARE_API_TOKEN")
-    project_name = resolve_project_name()
+    custom_domain = require_env("CUSTOM_DOMAIN")
     if not MIGRATION_PATH.exists():
         raise RuntimeError(f"Migration file not found: {MIGRATION_PATH}")
 
+    project_name = find_project_by_custom_domain(account_id, token, custom_domain)
     db_id = ensure_database(account_id, token)
     if not re.match(r"^[0-9a-fA-F-]{32,36}$", db_id or ""):
         raise RuntimeError("Cloudflare did not return a valid D1 database ID")
