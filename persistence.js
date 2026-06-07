@@ -91,6 +91,12 @@ class WorkoutPersistence {
   }
 
   patchAppMethods() {
+    const originalConnect = this.app.connect.bind(this.app);
+    this.app.connect = async () => {
+      await originalConnect();
+      await this.applyLoadedColorScheme({ quietIfDisconnected: true });
+    };
+
     const originalSaveWeightUnit = this.app.saveWeightUnitPreference.bind(this.app);
     this.app.saveWeightUnitPreference = () => {
       originalSaveWeightUnit();
@@ -219,25 +225,75 @@ class WorkoutPersistence {
     if (!this.selectedProfileId) return;
     const data = await this.apiFetch(`/api/profiles/${this.selectedProfileId}/settings`);
     this.settings = new Map((data.settings || []).map((setting) => [setting.key, setting]));
-    this.applySettings();
+    await this.applySettings();
   }
 
-  applySettings() {
+  async applySettings() {
     this.isApplyingSettings = true;
+    let shouldApplyColors = false;
     try {
       const weightUnit = this.settings.get(SETTING_WEIGHT_UNIT)?.value;
       if (weightUnit === "kg" || weightUnit === "lb") this.app.setWeightUnit(weightUnit, { force: true, previousUnit: this.app.weightUnit });
-      const stopAtTop = this.settings.get(SETTING_STOP_AT_TOP)?.value === "true";
-      this.app.stopAtTop = stopAtTop;
-      const stopAtTopCheckbox = document.getElementById("stopAtTopCheckbox");
-      if (stopAtTopCheckbox) stopAtTopCheckbox.checked = stopAtTop;
-      this.setInputValue("colorPreset", this.settings.get(SETTING_COLOR_PRESET)?.value || "");
-      this.setInputValue("color1", this.settings.get(SETTING_COLOR_1)?.value);
-      this.setInputValue("color2", this.settings.get(SETTING_COLOR_2)?.value);
-      this.setInputValue("color3", this.settings.get(SETTING_COLOR_3)?.value);
+
+      const stopAtTopSetting = this.settings.get(SETTING_STOP_AT_TOP);
+      if (stopAtTopSetting) {
+        const stopAtTop = stopAtTopSetting.value === "true";
+        this.app.stopAtTop = stopAtTop;
+        const stopAtTopCheckbox = document.getElementById("stopAtTopCheckbox");
+        if (stopAtTopCheckbox) stopAtTopCheckbox.checked = stopAtTop;
+      }
+
+      shouldApplyColors = this.applyColorInputsFromSettings();
     } finally {
       this.isApplyingSettings = false;
     }
+
+    if (shouldApplyColors) await this.applyLoadedColorScheme();
+  }
+
+  applyColorInputsFromSettings() {
+    let hasColorSettings = false;
+    const colorPreset = this.settings.get(SETTING_COLOR_PRESET)?.value;
+    if (colorPreset !== undefined) {
+      this.setInputValue("colorPreset", colorPreset || "");
+      if (colorPreset) this.app.loadColorPreset();
+      hasColorSettings = true;
+    }
+
+    for (const [inputId, settingKey] of [
+      ["color1", SETTING_COLOR_1],
+      ["color2", SETTING_COLOR_2],
+      ["color3", SETTING_COLOR_3],
+    ]) {
+      const value = this.settings.get(settingKey)?.value;
+      if (value !== undefined && value !== null) {
+        this.setInputValue(inputId, value);
+        hasColorSettings = true;
+      }
+    }
+
+    return hasColorSettings;
+  }
+
+  async applyLoadedColorScheme(options = {}) {
+    if (!this.hasLoadedColorSettings()) return;
+    if (!this.app.device?.isConnected) {
+      if (!options.quietIfDisconnected) this.app.addLogEntry("Profile colors loaded; connect to the device to apply them.", "info");
+      return;
+    }
+
+    const wasApplyingSettings = this.isApplyingSettings;
+    this.isApplyingSettings = true;
+    try {
+      await this.app.setColorScheme();
+      this.app.addLogEntry("Profile color scheme applied to device.", "success");
+    } finally {
+      this.isApplyingSettings = wasApplyingSettings;
+    }
+  }
+
+  hasLoadedColorSettings() {
+    return [SETTING_COLOR_PRESET, SETTING_COLOR_1, SETTING_COLOR_2, SETTING_COLOR_3].some((key) => this.settings.has(key));
   }
 
   setInputValue(id, value) {
