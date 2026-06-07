@@ -4,11 +4,13 @@ import path from "node:path";
 const root = process.cwd();
 const distDir = path.join(root, "dist");
 const persistenceScriptSrc = "persistence.js?v=exercise-history-20260607";
+const programsScriptSrc = "programs.js?v=program-builder-20260607";
 const staticAssets = [
   "app.js",
   "chart.js",
   "device.js",
   "modes.js",
+  "programs.js",
   "protocol.js",
   "persistence.js",
 ];
@@ -24,11 +26,19 @@ await Promise.all(
 const indexPath = path.join(distDir, "index.html");
 const html = await readFile(indexPath, "utf8");
 const persistenceScriptPattern = /src=["']persistence\.js(?:[?#][^"']*)?["']/;
-const versionedHtml = persistenceScriptPattern.test(html)
+const programsScriptPattern = /src=["']programs\.js(?:[?#][^"']*)?["']/;
+let versionedHtml = persistenceScriptPattern.test(html)
   ? html.replace(persistenceScriptPattern, `src="${persistenceScriptSrc}"`)
   : html.replace(
       '<script src="app.js"></script>',
       `<script src="app.js"></script>\n        <script src="${persistenceScriptSrc}"></script>`,
+    );
+
+versionedHtml = programsScriptPattern.test(versionedHtml)
+  ? versionedHtml.replace(programsScriptPattern, `src="${programsScriptSrc}"`)
+  : versionedHtml.replace(
+      /<script src="persistence\.js(?:[?#][^"]*)?"><\/script>/,
+      `<script src="${persistenceScriptSrc}"></script>\n        <script src="${programsScriptSrc}"></script>`,
     );
 
 if (versionedHtml !== html) {
