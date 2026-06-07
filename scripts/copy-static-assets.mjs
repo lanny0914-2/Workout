@@ -3,8 +3,8 @@ import path from "node:path";
 
 const root = process.cwd();
 const distDir = path.join(root, "dist");
-const persistenceScriptSrc = "persistence.js?v=exercise-history-20260607";
-const programsScriptSrc = "programs.js?v=program-builder-20260607";
+const persistenceScriptSrc = "persistence.js?v=profile-top-20260607";
+const programsScriptSrc = "programs.js?v=profile-program-editor-20260607";
 const staticAssets = [
   "app.js",
   "chart.js",

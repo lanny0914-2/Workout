@@ -268,8 +268,8 @@ class WorkoutPersistence {
 
   injectProfileSection() {
     if (document.getElementById("profileSection")) return;
-    const configSection = document.getElementById("configSection");
-    if (!configSection) return;
+    const sidebarContent = document.querySelector(".sidebar-content");
+    if (!sidebarContent) return;
 
     const section = document.createElement("div");
     section.className = "section";
@@ -291,15 +291,15 @@ class WorkoutPersistence {
         </div>
         <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer;">
           <input type="checkbox" id="importLocalProfileData" checked style="width: auto; cursor: pointer;" />
-          <span>Copy current local settings and workout history</span>
+          <span>Copy current local settings, programs, and workout history</span>
         </label>
         <div style="font-size: 0.8em; color: #6c757d; line-height: 1.4; margin-top: 8px;">
-          Profiles save display units, stop-at-top, color preferences, selected exercise, and completed workout history to D1.
+          Profiles save display units, stop-at-top, color preferences, selected exercise, programs, and completed workout history to D1.
         </div>
       </div>
       <div id="profileStatus" style="font-size: 0.82em; color: #495057; margin-top: 10px; min-height: 1.4em;"></div>
     `;
-    configSection.parentNode.insertBefore(section, configSection);
+    sidebarContent.insertBefore(section, sidebarContent.firstElementChild);
   }
 
   injectProfileHandlers() {
