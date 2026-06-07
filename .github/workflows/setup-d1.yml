@@ -1,0 +1,26 @@
+name: Setup D1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-d1:
+    name: Setup D1 database and Pages binding
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load site request
+        run: python .github/scripts/load-site-request.py
+
+      - name: Setup D1
+        run: python .github/scripts/setup-d1.py
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CUSTOM_DOMAIN: ${{ env.CUSTOM_DOMAIN }}
+          D1_DATABASE_NAME: workout-profiles
+          D1_BINDING_NAME: DB

@@ -5,6 +5,23 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      setup_d1_only:
+        description: Set up the D1 database and Pages binding without deploying.
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      validate_only:
+        description: Build and validate dist without deploying.
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   deploy:
@@ -33,35 +50,57 @@ jobs:
         run: python .github/scripts/load-site-request.py
 
       - name: Reserve Cloudflare Pages project name
-        if: steps.site_request.outputs.present == 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true' && github.event.inputs.validate_only != 'true'
         run: python .github/scripts/ensure-cloudflare-pages-project.py
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
+      - name: Setup D1 profile database
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only == 'true'
+        run: python .github/scripts/setup-d1.py
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CUSTOM_DOMAIN: ${{ env.CUSTOM_DOMAIN }}
+          D1_DATABASE_NAME: workout-profiles
+          D1_BINDING_NAME: DB
+
+      - name: Stop after D1 setup
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only == 'true'
+        run: echo "D1 setup completed; deployment intentionally skipped."
+
       - name: Setup Node
-        if: steps.site_request.outputs.present == 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install dependencies
-        if: steps.site_request.outputs.present == 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
         run: npm install
 
       - name: Build
-        if: steps.site_request.outputs.present == 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
         run: npm run build
 
+      - name: Validate dist
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
+        run: npm run validate:dist
+
+      - name: Stop after validation
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.validate_only == 'true'
+        run: echo "Build validation completed; deployment intentionally skipped."
+
       - name: Deploy to Cloudflare Pages
-        if: steps.site_request.outputs.present == 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true' && github.event.inputs.validate_only != 'true'
         run: npx wrangler pages deploy dist --project-name="$PAGES_PROJECT_NAME" --branch=main
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Configure Cloudflare custom domain
-        if: steps.site_request.outputs.present == 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true' && github.event.inputs.validate_only != 'true'
         run: python .github/scripts/configure-cloudflare-domain.py
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
