@@ -12,7 +12,7 @@ API_BASE = "https://api.cloudflare.com/client/v4"
 DB_NAME = os.environ.get("D1_DATABASE_NAME", "workout-profiles")
 BINDING_NAME = os.environ.get("D1_BINDING_NAME", "DB")
 MIGRATION_PATH = Path(os.environ.get("D1_MIGRATION_PATH", "migrations/0001_profiles_workouts.sql"))
-PROJECT_NAME = os.environ.get("PAGES_PROJECT_NAME", "workout")
+PROJECT_NAME_FILE = Path(os.environ.get("PAGES_PROJECT_NAME_FILE", ".cloudflare-pages-project-name"))
 MAX_API_RETRIES = 4
 
 
@@ -29,6 +29,18 @@ def require_env(name):
         print(f"Missing required environment variable: {name}", file=sys.stderr)
         sys.exit(1)
     return value
+
+
+def resolve_project_name():
+    explicit = os.environ.get("PAGES_PROJECT_NAME")
+    if explicit:
+        return explicit
+    if PROJECT_NAME_FILE.exists():
+        value = PROJECT_NAME_FILE.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    print("Missing resolved Cloudflare Pages project name", file=sys.stderr)
+    sys.exit(1)
 
 
 def collect_error_messages(payload):
@@ -166,13 +178,13 @@ def verify_tables(account_id, token, db_id):
     print(f"Verified D1 tables: {', '.join(sorted(found))}")
 
 
-def get_project(account_id, token):
-    project = urllib.parse.quote(PROJECT_NAME, safe="")
+def get_project(account_id, token, project_name):
+    project = urllib.parse.quote(project_name, safe="")
     return cloudflare_request("GET", f"/accounts/{account_id}/pages/projects/{project}", token).get("result", {})
 
 
-def bind_pages_project(account_id, token, db_id):
-    project = get_project(account_id, token)
+def bind_pages_project(account_id, token, db_id, project_name):
+    project = get_project(account_id, token, project_name)
     deployment_configs = project.get("deployment_configs") or {}
     for env_name in ("production", "preview"):
         config = deployment_configs.get(env_name) or {}
@@ -181,18 +193,18 @@ def bind_pages_project(account_id, token, db_id):
         config["d1_databases"] = d1_databases
         deployment_configs[env_name] = config
 
-    project_name = urllib.parse.quote(PROJECT_NAME, safe="")
+    encoded_project_name = urllib.parse.quote(project_name, safe="")
     cloudflare_request(
         "PATCH",
-        f"/accounts/{account_id}/pages/projects/{project_name}",
+        f"/accounts/{account_id}/pages/projects/{encoded_project_name}",
         token,
         {"deployment_configs": deployment_configs},
     )
-    print(f"Bound D1 database to Pages project '{PROJECT_NAME}' as '{BINDING_NAME}'")
+    print(f"Bound D1 database to Pages project '{project_name}' as '{BINDING_NAME}'")
 
 
-def verify_binding(account_id, token, db_id):
-    project = get_project(account_id, token)
+def verify_binding(account_id, token, db_id, project_name):
+    project = get_project(account_id, token, project_name)
     configs = project.get("deployment_configs") or {}
     for env_name in ("production", "preview"):
         binding = ((configs.get(env_name) or {}).get("d1_databases") or {}).get(BINDING_NAME) or {}
@@ -204,6 +216,7 @@ def verify_binding(account_id, token, db_id):
 def main():
     account_id = require_env("CLOUDFLARE_ACCOUNT_ID")
     token = require_env("CLOUDFLARE_API_TOKEN")
+    project_name = resolve_project_name()
     if not MIGRATION_PATH.exists():
         raise RuntimeError(f"Migration file not found: {MIGRATION_PATH}")
 
@@ -212,8 +225,8 @@ def main():
         raise RuntimeError("Cloudflare did not return a valid D1 database ID")
     apply_migration(account_id, token, db_id)
     verify_tables(account_id, token, db_id)
-    bind_pages_project(account_id, token, db_id)
-    verify_binding(account_id, token, db_id)
+    bind_pages_project(account_id, token, db_id, project_name)
+    verify_binding(account_id, token, db_id, project_name)
     print("D1 setup complete")
 
 
