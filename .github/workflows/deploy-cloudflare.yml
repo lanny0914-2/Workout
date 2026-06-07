@@ -14,6 +14,14 @@ on:
         options:
           - "false"
           - "true"
+      validate_only:
+        description: Build and validate dist without deploying.
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   deploy:
@@ -42,7 +50,7 @@ jobs:
         run: python .github/scripts/load-site-request.py
 
       - name: Reserve Cloudflare Pages project name
-        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true' && github.event.inputs.validate_only != 'true'
         run: python .github/scripts/ensure-cloudflare-pages-project.py
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -76,15 +84,23 @@ jobs:
         if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
         run: npm run build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Validate dist
         if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
+        run: npm run validate:dist
+
+      - name: Stop after validation
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.validate_only == 'true'
+        run: echo "Build validation completed; deployment intentionally skipped."
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true' && github.event.inputs.validate_only != 'true'
         run: npx wrangler pages deploy dist --project-name="$PAGES_PROJECT_NAME" --branch=main
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Configure Cloudflare custom domain
-        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true' && github.event.inputs.validate_only != 'true'
         run: python .github/scripts/configure-cloudflare-domain.py
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
