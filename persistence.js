@@ -16,6 +16,8 @@ class WorkoutPersistence {
     this.settings = new Map();
     this.isApplyingSettings = false;
     this.hasD1 = true;
+    this.colorApplyTimer = null;
+    this.colorApplyRequestId = 0;
   }
 
   async init() {
@@ -94,7 +96,7 @@ class WorkoutPersistence {
     const originalConnect = this.app.connect.bind(this.app);
     this.app.connect = async () => {
       await originalConnect();
-      await this.applyLoadedColorScheme({ quietIfDisconnected: true });
+      this.scheduleLoadedColorSchemeApply({ quietIfDisconnected: true, delayMs: 300 });
     };
 
     const originalSaveWeightUnit = this.app.saveWeightUnitPreference.bind(this.app);
@@ -225,10 +227,10 @@ class WorkoutPersistence {
     if (!this.selectedProfileId) return;
     const data = await this.apiFetch(`/api/profiles/${this.selectedProfileId}/settings`);
     this.settings = new Map((data.settings || []).map((setting) => [setting.key, setting]));
-    await this.applySettings();
+    this.applySettings();
   }
 
-  async applySettings() {
+  applySettings() {
     this.isApplyingSettings = true;
     let shouldApplyColors = false;
     try {
@@ -248,7 +250,7 @@ class WorkoutPersistence {
       this.isApplyingSettings = false;
     }
 
-    if (shouldApplyColors) await this.applyLoadedColorScheme();
+    if (shouldApplyColors) this.scheduleLoadedColorSchemeApply();
   }
 
   applyColorInputsFromSettings() {
@@ -275,21 +277,65 @@ class WorkoutPersistence {
     return hasColorSettings;
   }
 
-  async applyLoadedColorScheme(options = {}) {
+  scheduleLoadedColorSchemeApply(options = {}) {
     if (!this.hasLoadedColorSettings()) return;
+    const requestId = ++this.colorApplyRequestId;
+    if (this.colorApplyTimer) clearTimeout(this.colorApplyTimer);
+
+    const delayMs = options.delayMs ?? 100;
+    this.colorApplyTimer = setTimeout(async () => {
+      const applied = await this.applyLoadedColorScheme(options);
+      if (applied && requestId === this.colorApplyRequestId) {
+        setTimeout(() => {
+          if (requestId === this.colorApplyRequestId) this.applyLoadedColorScheme({ quietSuccess: true, quietIfDisconnected: true });
+        }, 700);
+      }
+    }, delayMs);
+  }
+
+  async applyLoadedColorScheme(options = {}) {
+    const colors = this.getLoadedColorScheme();
+    if (!colors) return false;
+
     if (!this.app.device?.isConnected) {
       if (!options.quietIfDisconnected) this.app.addLogEntry("Profile colors loaded; connect to the device to apply them.", "info");
-      return;
+      return false;
     }
 
     const wasApplyingSettings = this.isApplyingSettings;
     this.isApplyingSettings = true;
     try {
-      await this.app.setColorScheme();
-      this.app.addLogEntry("Profile color scheme applied to device.", "success");
+      await this.app.device.setColorScheme(0.4, colors);
+      if (!options.quietSuccess) {
+        this.app.addLogEntry("Profile color scheme applied to device.", "success");
+        this.setStatus("Profile colors applied to device.", "success");
+      }
+      return true;
+    } catch (error) {
+      this.app.addLogEntry(`Could not apply profile colors: ${error.message}`, "error");
+      this.setStatus(`Could not apply profile colors: ${error.message}`, "error");
+      return false;
     } finally {
       this.isApplyingSettings = wasApplyingSettings;
     }
+  }
+
+  getLoadedColorScheme() {
+    const color1 = this.parseHexColor(document.getElementById("color1")?.value);
+    const color2 = this.parseHexColor(document.getElementById("color2")?.value);
+    const color3 = this.parseHexColor(document.getElementById("color3")?.value);
+    if (!color1 || !color2 || !color3) return null;
+    return [color1, color2, color3];
+  }
+
+  parseHexColor(value) {
+    const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(value || "");
+    if (!match) return null;
+    return {
+      r: parseInt(match[1], 16),
+      g: parseInt(match[2], 16),
+      b: parseInt(match[3], 16),
+    };
   }
 
   hasLoadedColorSettings() {
