@@ -183,18 +183,8 @@ def get_project(account_id, token, project_name):
 
 
 def list_pages_projects(account_id, token):
-    projects = []
-    page = 1
-    while True:
-        query = urllib.parse.urlencode({"page": page, "per_page": 50})
-        payload = cloudflare_request("GET", f"/accounts/{account_id}/pages/projects?{query}", token)
-        batch = result_list(payload)
-        projects.extend(batch)
-        info = payload.get("result_info") or {}
-        total_pages = int(info.get("total_pages") or page)
-        if page >= total_pages or not batch:
-            return projects
-        page += 1
+    payload = cloudflare_request("GET", f"/accounts/{account_id}/pages/projects", token)
+    return result_list(payload)
 
 
 def project_domains(account_id, token, project_name):
