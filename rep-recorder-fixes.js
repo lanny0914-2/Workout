@@ -90,6 +90,43 @@
       this.lastSample = sample;
     };
 
+    global.RepRecorder.prototype.summarizeRep = function summarizeRep(rep, repNumber) {
+      const totalDurationSeconds = Math.max(0, (rep.endedAt.getTime() - rep.startedAt.getTime()) / 1000);
+      const upDurationSeconds = rep.upEndedAt
+        ? Math.max(0, (rep.upEndedAt.getTime() - rep.startedAt.getTime()) / 1000)
+        : rep.up.durationMs / 1000;
+      const downDurationSeconds = rep.upEndedAt
+        ? Math.max(0, (rep.endedAt.getTime() - rep.upEndedAt.getTime()) / 1000)
+        : rep.down.durationMs / 1000;
+      const avgActual = rep.total.averageActual();
+      return {
+        repNumber,
+        mode: this.mode,
+        repKind: rep.repKind,
+        startedAt: iso(rep.startedAt),
+        endedAt: iso(rep.endedAt),
+        upDurationSeconds: roundOrNull(upDurationSeconds, 3),
+        downDurationSeconds: roundOrNull(downDurationSeconds, 3),
+        totalDurationSeconds: roundOrNull(totalDurationSeconds, 3),
+        activeDurationSeconds: roundOrNull(rep.total.durationMs / 1000, 3),
+        programmedLoadKg: roundOrNull(this.programmedLoadKg),
+        averageCommandedLoadKg: roundOrNull(rep.total.averageCommanded()),
+        averageActualLoadKg: roundOrNull(avgActual),
+        averageActualLoadUpKg: roundOrNull(rep.up.averageActual()),
+        averageActualLoadDownKg: roundOrNull(rep.down.averageActual()),
+        peakActualLoadKg: roundOrNull(rep.total.peakActual),
+        minimumActualLoadKg: roundOrNull(rep.total.minActual),
+        startingActualLoadKg: roundOrNull(rep.total.startActual),
+        endingActualLoadKg: roundOrNull(rep.total.endActual),
+        resistanceVaried: this.resistanceVaried(rep.total),
+        averageActualLoadLeftKg: roundOrNull(rep.total.averageActualLeft()),
+        averageActualLoadRightKg: roundOrNull(rep.total.averageActualRight()),
+        averageActualLoadCombinedKg: roundOrNull(rep.total.averageActualCombined()),
+        completionStatus: rep.status,
+        metadata: rep.modeSpecificMetadata,
+      };
+    };
+
     global.RepRecorder.prototype.getSummary = function getSummary() {
       const completedReps = this.reps.filter((rep) => rep.completionStatus === "completed" && rep.repKind === "working");
       const allCompleted = this.reps.filter((rep) => rep.completionStatus === "completed");
