@@ -11,7 +11,7 @@ from pathlib import Path
 API_BASE = "https://api.cloudflare.com/client/v4"
 DB_NAME = os.environ.get("D1_DATABASE_NAME", "workout-profiles")
 BINDING_NAME = os.environ.get("D1_BINDING_NAME", "DB")
-MIGRATION_PATH = Path(os.environ.get("D1_MIGRATION_PATH", "migrations/0001_profiles_workouts.sql"))
+MIGRATION_PATH = Path(os.environ.get("D1_MIGRATION_PATH", "migrations"))
 MAX_API_RETRIES = 4
 
 
@@ -151,21 +151,54 @@ def query_database(account_id, token, db_id, sql, params=None):
     return cloudflare_request("POST", f"/accounts/{account_id}/d1/database/{db_id}/query", token, body)
 
 
+def migration_files():
+    if MIGRATION_PATH.is_file():
+        return [MIGRATION_PATH]
+    if MIGRATION_PATH.is_dir():
+        files = sorted(MIGRATION_PATH.glob("*.sql"))
+        if files:
+            return files
+    raise RuntimeError(f"Migration path not found or empty: {MIGRATION_PATH}")
+
+
+def is_repeatable_migration_error(error):
+    text = " ".join(error.error_messages or [str(error)]).lower()
+    repeatable_fragments = [
+        "duplicate column name",
+        "already exists",
+        "table",
+        "index",
+    ]
+    return "duplicate column name" in text or ("already exists" in text and any(fragment in text for fragment in repeatable_fragments))
+
+
 def apply_migration(account_id, token, db_id):
-    sql = MIGRATION_PATH.read_text(encoding="utf-8")
-    statements = split_sql(sql)
-    for statement in statements:
-        query_database(account_id, token, db_id, statement)
-    print(f"Applied migration statements: {len(statements)}")
+    total = 0
+    for migration in migration_files():
+        statements = split_sql(migration.read_text(encoding="utf-8"))
+        applied = 0
+        skipped = 0
+        for statement in statements:
+            try:
+                query_database(account_id, token, db_id, statement)
+                applied += 1
+            except CloudflareApiError as error:
+                if is_repeatable_migration_error(error):
+                    skipped += 1
+                    continue
+                raise
+        total += applied
+        print(f"Applied migration {migration}: {applied} statements, {skipped} already present")
+    print(f"Applied migration statements total: {total}")
 
 
 def verify_tables(account_id, token, db_id):
-    expected = {"profiles", "profile_settings", "workout_sessions", "workout_entries"}
+    expected = {"profiles", "profile_settings", "workout_sessions", "workout_entries", "workout_rep_metrics"}
     result = query_database(
         account_id,
         token,
         db_id,
-        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('profiles','profile_settings','workout_sessions','workout_entries') ORDER BY name",
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('profiles','profile_settings','workout_sessions','workout_entries','workout_rep_metrics') ORDER BY name",
     )
     rows = []
     for item in result.get("result", []):
@@ -257,8 +290,6 @@ def main():
     account_id = require_env("CLOUDFLARE_ACCOUNT_ID")
     token = require_env("CLOUDFLARE_API_TOKEN")
     custom_domain = require_env("CUSTOM_DOMAIN")
-    if not MIGRATION_PATH.exists():
-        raise RuntimeError(f"Migration file not found: {MIGRATION_PATH}")
 
     project_name = find_project_by_custom_domain(account_id, token, custom_domain)
     db_id = ensure_database(account_id, token)
