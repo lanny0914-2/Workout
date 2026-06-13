@@ -56,6 +56,21 @@
       return known;
     }
 
+    function hasActualLoad(sample) {
+      return sample.actualLoadLeftKg !== undefined
+        || sample.actualLoadRightKg !== undefined
+        || sample.actualLoadCombinedKg !== undefined;
+    }
+
+    function addInterval(accumulator, sample, durationMs) {
+      if (hasActualLoad(sample)) {
+        accumulator.add(sample, durationMs);
+        return;
+      }
+      accumulator.durationMs += durationMs;
+      addWeighted(accumulator, "commandedMs", "commandedSum", sample.commandedLoadKg, durationMs);
+    }
+
     global.RepRecorder.prototype.normalizeSample = function normalizeSample(sample) {
       const actualLeft = finiteOrNull(sample.actualLoadLeftKg ?? sample.loadA);
       const actualRight = finiteOrNull(sample.actualLoadRightKg ?? sample.loadB);
@@ -81,8 +96,8 @@
         const durationMs = sample.timestamp.getTime() - this.lastSample.timestamp.getTime();
         if (durationMs > 0 && durationMs <= 2000 && this.isActiveMovement(this.lastSample, sample)) {
           const weightedSample = copyKnownLoadFields(this.lastSample);
-          this.currentRep.total.add(weightedSample, durationMs);
-          this.currentRep[this.currentPhase].add(weightedSample, durationMs);
+          addInterval(this.currentRep.total, weightedSample, durationMs);
+          addInterval(this.currentRep[this.currentPhase], weightedSample, durationMs);
           this.lastActiveSample = sample;
         }
       }
