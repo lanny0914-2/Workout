@@ -47,6 +47,15 @@
       return ms > 0 ? sum / ms : null;
     }
 
+    function copyKnownLoadFields(sample) {
+      const known = {};
+      if (sample.actualLoadLeftKg !== null) known.actualLoadLeftKg = sample.actualLoadLeftKg;
+      if (sample.actualLoadRightKg !== null) known.actualLoadRightKg = sample.actualLoadRightKg;
+      if (sample.actualLoadCombinedKg !== null) known.actualLoadCombinedKg = sample.actualLoadCombinedKg;
+      if (sample.commandedLoadKg !== null) known.commandedLoadKg = sample.commandedLoadKg;
+      return known;
+    }
+
     global.RepRecorder.prototype.normalizeSample = function normalizeSample(sample) {
       const actualLeft = finiteOrNull(sample.actualLoadLeftKg ?? sample.loadA);
       const actualRight = finiteOrNull(sample.actualLoadRightKg ?? sample.loadB);
@@ -61,6 +70,24 @@
         actualLoadCombinedKg: actualCombined,
         commandedLoadKg: finiteOrNull(sample.commandedLoadKg ?? this.commandedLoadKg),
       };
+    };
+
+    global.RepRecorder.prototype.recordSample = function recordSample(inputSample) {
+      if (!this.active || !inputSample) return;
+      const sample = this.normalizeSample(inputSample);
+      if (!this.currentRep) this.beginRep(sample.timestamp);
+
+      if (this.lastSample) {
+        const durationMs = sample.timestamp.getTime() - this.lastSample.timestamp.getTime();
+        if (durationMs > 0 && durationMs <= 2000 && this.isActiveMovement(this.lastSample, sample)) {
+          const weightedSample = copyKnownLoadFields(this.lastSample);
+          this.currentRep.total.add(weightedSample, durationMs);
+          this.currentRep[this.currentPhase].add(weightedSample, durationMs);
+          this.lastActiveSample = sample;
+        }
+      }
+
+      this.lastSample = sample;
     };
 
     global.RepRecorder.prototype.getSummary = function getSummary() {
