@@ -5,6 +5,7 @@ const root = process.cwd();
 const distDir = path.join(root, "dist");
 const scriptSources = {
   "rep-recorder.js": "rep-recorder.js?v=load-recorder-20260613",
+  "rep-recorder-fixes.js": "rep-recorder-fixes.js?v=load-recorder-fixes-20260613",
   "rep-recorder-boot.js": "rep-recorder-boot.js?v=load-recorder-boot-20260613",
   "persistence.js": "persistence.js?v=load-reporting-20260613",
   "rep-history-bridge.js": "rep-history-bridge.js?v=load-bridge-20260613",
@@ -22,6 +23,7 @@ const staticAssets = [
   "persistence.js",
   "rep-history-bridge.js",
   "rep-recorder.js",
+  "rep-recorder-fixes.js",
   "rep-recorder-boot.js",
 ];
 
@@ -45,6 +47,7 @@ for (const [fileName, src] of Object.entries(scriptSources)) {
 
 const requiredOrder = [
   "rep-recorder.js",
+  "rep-recorder-fixes.js",
   "rep-recorder-boot.js",
   "persistence.js",
   "rep-history-bridge.js",
