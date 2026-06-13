@@ -66,14 +66,15 @@ test("rest time is excluded by movement threshold", () => {
   recorder.recordSample(sample(2000, { pos: 10, loadA: 5, loadB: 5 }));
   recorder.completeRep({ timestamp: new Date(2000), repKind: "working" });
   const [rep] = recorder.finishSession({ endedAt: new Date(2000) }).reps;
-  assert.equal(rep.averageActualLoadKg, 10);
+  assert.equal(rep.averageActualLoadKg, 200);
+  assert.equal(rep.activeDurationSeconds, 1);
 });
 
 test("upward and downward averages are separate", () => {
   const recorder = new RepRecorder();
   recorder.startSession({ mode: "Eccentric Only" });
   recorder.recordSample(sample(0, { pos: 0, loadA: 5, loadB: 5 }));
-  recorder.recordSample(sample(1000, { pos: 10, loadA: 5, loadB: 5 }));
+  recorder.recordSample(sample(1000, { pos: 10, loadA: 15, loadB: 15 }));
   recorder.markTop(new Date(1000));
   recorder.recordSample(sample(2000, { pos: 0, loadA: 15, loadB: 15 }));
   recorder.completeRep({ timestamp: new Date(2000), repKind: "working" });
@@ -86,11 +87,11 @@ test("irregular intervals use time-weighted averaging", () => {
   const recorder = new RepRecorder();
   recorder.startSession({ mode: "TUT" });
   recorder.recordSample(sample(0, { pos: 0, loadA: 10, loadB: 0 }));
-  recorder.recordSample(sample(1000, { pos: 10, loadA: 10, loadB: 0 }));
+  recorder.recordSample(sample(1000, { pos: 10, loadA: 20, loadB: 0 }));
   recorder.recordSample(sample(3000, { pos: 20, loadA: 20, loadB: 0 }));
   recorder.completeRep({ timestamp: new Date(3000), repKind: "working" });
   const [rep] = recorder.finishSession({ endedAt: new Date(3000) }).reps;
-  assert.equal(rep.averageActualLoadKg, 13.3333);
+  assert.equal(rep.averageActualLoadKg, 16.6667);
 });
 
 test("set-level averages are duration weighted", () => {
@@ -134,18 +135,19 @@ test("variable resistance during a rep is summarized", () => {
   recorder.recordSample(sample(0, { pos: 0, loadA: 5, loadB: 5 }));
   recorder.recordSample(sample(1000, { pos: 10, loadA: 10, loadB: 10 }));
   recorder.recordSample(sample(2000, { pos: 20, loadA: 20, loadB: 20 }));
-  recorder.completeRep({ timestamp: new Date(2000), repKind: "working" });
-  const [rep] = recorder.finishSession({ endedAt: new Date(2000) }).reps;
+  recorder.recordSample(sample(3000, { pos: 30, loadA: 20, loadB: 20 }));
+  recorder.completeRep({ timestamp: new Date(3000), repKind: "working" });
+  const [rep] = recorder.finishSession({ endedAt: new Date(3000) }).reps;
   assert.equal(rep.resistanceVaried, true);
   assert.equal(rep.minimumActualLoadKg, 10);
-  assert.equal(rep.peakActualLoadKg, 20);
+  assert.equal(rep.peakActualLoadKg, 40);
 });
 
 test("resistance changes between phases are preserved", () => {
   const recorder = new RepRecorder();
   recorder.startSession({ mode: "Eccentric Only" });
   recorder.recordSample(sample(0, { pos: 0, loadA: 5, loadB: 5 }));
-  recorder.recordSample(sample(1000, { pos: 10, loadA: 5, loadB: 5 }));
+  recorder.recordSample(sample(1000, { pos: 10, loadA: 20, loadB: 20 }));
   recorder.markTop(new Date(1000));
   recorder.recordSample(sample(2000, { pos: 0, loadA: 20, loadB: 20 }));
   recorder.completeRep({ timestamp: new Date(2000), repKind: "working" });
