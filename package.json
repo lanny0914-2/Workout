@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --test",
     "build": "vite build",
     "postbuild": "node scripts/copy-static-assets.mjs",
     "validate:dist": "node scripts/validate-dist.mjs",
