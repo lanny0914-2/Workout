@@ -12,6 +12,7 @@ function loadRecorder() {
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(readFileSync(new URL("../rep-recorder.js", import.meta.url), "utf8"), context);
+  vm.runInContext(readFileSync(new URL("../rep-recorder-fixes.js", import.meta.url), "utf8"), context);
   return context.RepRecorder;
 }
 
