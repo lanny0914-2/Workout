@@ -80,6 +80,10 @@ jobs:
         if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
         run: npm install
 
+      - name: Test
+        if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
+        run: npm test
+
       - name: Build
         if: steps.site_request.outputs.present == 'true' && github.event.inputs.setup_d1_only != 'true'
         run: npm run build
